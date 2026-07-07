@@ -14,6 +14,31 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Overwrite Android Manifest
+        # Этот шаг принудительно заменяет сломанный манифест на идеально правильный!
+        run: |
+          mkdir -p app/src/main
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://android.com">
+              <uses-permission android:name="android.permission.INTERNET" />
+              <application
+                  android:allowBackup="true"
+                  android:label="Cinema Player"
+                  android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+                  <activity
+                      android:name="com.love.cinemaplayer.MainActivity"
+                      android:exported="true"
+                      android:screenOrientation="landscape">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
       - name: Setup Gradle Wrapper Automatically
         run: gradle wrapper --gradle-version 8.5
 
@@ -21,7 +46,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Build APK with Gradle
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
