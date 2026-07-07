@@ -15,7 +15,7 @@ jobs:
           java-version: '17'
 
       - name: Force Generate Perfect Project
-        # Сервер полностью стирает всю путаницу и с нуля создает чистую структуру папок Linux
+        # Полностью автономный скрипт без ломающихся символов переноса строки
         run: |
           rm -rf app settings.gradle build.gradle compile.py builder.py || true
           mkdir -p app/src/main/java/com/love/cinemaplayer
@@ -36,7 +36,7 @@ jobs:
           </manifest>
           EOF
 
-          # 2. Записываем чистый Java код без единой опечатки
+          # 2. Записываем чистый Java код плеера
           cat << 'EOF' > app/src/main/java/com/love/cinemaplayer/MainActivity.java
           package com.love.cinemaplayer;
           import android.app.Activity;
@@ -112,36 +112,28 @@ jobs:
           }
           EOF
 
-          # 3. Записываем чистые файлы конфигурации Gradle
+          # 3. Исправлено: Записываем файлы Gradle строчка за строчкой БЕЗ символов косой черты
           echo "include ':app'" > settings.gradle
           
-          cat << 'EOF' > build.gradle
-          buildscript {
-              repositories { google() \n mavenCentral() }
-              dependencies { classpath 'com.android.tools.build:gradle:8.2.2' }
-          }
-          allprojects {
-              repositories { google() \n mavenCentral() }
-          }
-          EOF
+          echo "buildscript {" > build.gradle
+          echo "    repositories { google(); mavenCentral() }" >> build.gradle
+          echo "    dependencies { classpath 'com.android.tools.build:gradle:8.2.2' }" >> build.gradle
+          echo "}" >> build.gradle
+          echo "allprojects { repositories { google(); mavenCentral() } }" >> build.gradle
 
-          cat << 'EOF' > app/build.gradle
-          plugins { id 'com.android.application' }
-          android {
-              namespace 'com.love.cinemaplayer'
-              compileSdk 34
-              defaultConfig {
-                  applicationId "com.love.cinemaplayer"
-                  minSdk 21
-                  targetSdk 34
-                  versionCode 1
-                  versionName "1.0"
-              }
-          }
-          dependencies {
-              implementation 'org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5'
-          }
-          EOF
+          echo "plugins { id 'com.android.application' }" > app/build.gradle
+          echo "android {" >> app/build.gradle
+          echo "    namespace 'com.love.cinemaplayer'" >> app/build.gradle
+          echo "    compileSdk 34" >> app/build.gradle
+          echo "    defaultConfig {" >> app/build.gradle
+          echo "        applicationId 'com.love.cinemaplayer'" >> app/build.gradle
+          echo "        minSdk 21" >> app/build.gradle
+          echo "        targetSdk 34" >> app/build.gradle
+          echo "        versionCode 1" >> app/build.gradle
+          echo "        versionName '1.0'" >> app/build.gradle
+          echo "    }" >> app/build.gradle
+          echo "}" >> app/build.gradle
+          echo "dependencies { implementation 'org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5' }" >> app/build.gradle
 
       - name: Setup Gradle Wrapper Automatically
         run: gradle wrapper --gradle-version 8.5
