@@ -14,22 +14,19 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Overwrite Android Manifest
-        # Этот шаг принудительно заменяет сломанный манифест на идеально правильный!
+      - name: Force Generate Perfect Project
+        # Сервер полностью стирает всю путаницу и с нуля создает чистую структуру папок Linux
         run: |
-          mkdir -p app/src/main
+          rm -rf app settings.gradle build.gradle compile.py builder.py || true
+          mkdir -p app/src/main/java/com/love/cinemaplayer
+          
+          # 1. Записываем чистый и правильный Манифест
           cat << 'EOF' > app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://android.com">
+          <manifest xmlns:android="http://android.com" package="com.love.cinemaplayer">
               <uses-permission android:name="android.permission.INTERNET" />
-              <application
-                  android:allowBackup="true"
-                  android:label="Cinema Player"
-                  android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
-                  <activity
-                      android:name="com.love.cinemaplayer.MainActivity"
-                      android:exported="true"
-                      android:screenOrientation="landscape">
+              <application android:allowBackup="true" android:label="Cinema Player" android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+                  <activity android:name="com.love.cinemaplayer.MainActivity" android:exported="true" android:screenOrientation="landscape">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
                           <category android:name="android.intent.category.LAUNCHER" />
@@ -37,6 +34,113 @@ jobs:
                   </activity>
               </application>
           </manifest>
+          EOF
+
+          # 2. Записываем чистый Java код без единой опечатки
+          cat << 'EOF' > app/src/main/java/com/love/cinemaplayer/MainActivity.java
+          package com.love.cinemaplayer;
+          import android.app.Activity;
+          import android.net.Uri;
+          import android.os.Bundle;
+          import android.view.View;
+          import android.widget.TextView;
+          import android.widget.VideoView;
+          import org.eclipse.paho.client.mqttv3.*;
+          import org.json.JSONObject;
+
+          public class MainActivity extends Activity {
+              private VideoView videoPlayer;
+              private TextView infoLabel;
+              private MqttAsyncClient client;
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  videoPlayer = new VideoView(this);
+                  infoLabel = new TextView(this);
+                  infoLabel.setText("🎬 WAITING FOR HOST SIGNAL...");
+                  infoLabel.setTextSize(20);
+                  infoLabel.setTextColor(0xFF89B4FA);
+                  
+                  android.widget.RelativeLayout layout = new android.widget.RelativeLayout(this);
+                  layout.setBackgroundColor(0xFF11111B);
+                  
+                  android.widget.RelativeLayout.LayoutParams params = new android.widget.RelativeLayout.LayoutParams(
+                      android.widget.RelativeLayout.LayoutParams.WRAP_CONTENT, android.widget.RelativeLayout.LayoutParams.WRAP_CONTENT);
+                  params.addRule(android.widget.RelativeLayout.CENTER_IN_PARENT);
+                  layout.addView(infoLabel, params);
+                  layout.addView(videoPlayer, new android.widget.RelativeLayout.LayoutParams(
+                      android.widget.RelativeLayout.LayoutParams.MATCH_PARENT, android.widget.RelativeLayout.LayoutParams.MATCH_PARENT));
+                  videoPlayer.setVisibility(View.GONE);
+                  setContentView(layout);
+                  startMqtt();
+              }
+
+              private void startMqtt() {
+                  try {
+                      String clientId = MqttClient.generateClientId();
+                      client = new MqttAsyncClient("tcp://broker.emqx.io:1883", clientId, null);
+                      MqttConnectOptions options = new MqttConnectOptions();
+                      options.setAutomaticReconnect(true);
+                      options.setCleanSession(true);
+                      client.connect(options, null, new IMqttActionListener() {
+                          @Override public void onSuccess(IMqttToken token) { try { client.subscribe("my_cinema/love_cinema_room_secret_999/control", 1); } catch (Exception e) {} }
+                          @Override public void onFailure(IMqttToken asyncActionToken, Throwable exception) {}
+                      });
+                      client.setCallback(new MqttCallbackExtended() {
+                          @Override public void connectComplete(boolean reconnect, String serverURI) {}
+                          @Override public void connectionLost(Throwable cause) {}
+                          @Override public void deliveryComplete(IMqttDeliveryToken token) {}
+                          @Override
+                          public void messageArrived(String topic, MqttMessage message) throws Exception {
+                              JSONObject data = new JSONObject(new String(message.getPayload()));
+                              final String action = data.getString("action");
+                              final String url = data.optString("url", "");
+                              runOnUiThread(() -> {
+                                  if (action.equals("load") && !url.isEmpty()) {
+                                      infoLabel.setVisibility(View.GONE);
+                                      videoPlayer.setVisibility(View.VISIBLE);
+                                      videoPlayer.setVideoURI(Uri.parse(url));
+                                      videoPlayer.start();
+                                  } else if (action.equals("play")) { videoPlayer.start(); }
+                                  else if (action.equals("pause")) { videoPlayer.pause(); }
+                              });
+                          }
+                      });
+                  } catch (Exception e) {}
+              }
+          }
+          EOF
+
+          # 3. Записываем чистые файлы конфигурации Gradle
+          echo "include ':app'" > settings.gradle
+          
+          cat << 'EOF' > build.gradle
+          buildscript {
+              repositories { google() \n mavenCentral() }
+              dependencies { classpath 'com.android.tools.build:gradle:8.2.2' }
+          }
+          allprojects {
+              repositories { google() \n mavenCentral() }
+          }
+          EOF
+
+          cat << 'EOF' > app/build.gradle
+          plugins { id 'com.android.application' }
+          android {
+              namespace 'com.love.cinemaplayer'
+              compileSdk 34
+              defaultConfig {
+                  applicationId "com.love.cinemaplayer"
+                  minSdk 21
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+          }
+          dependencies {
+              implementation 'org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5'
+          }
           EOF
 
       - name: Setup Gradle Wrapper Automatically
