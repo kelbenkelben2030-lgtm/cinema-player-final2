@@ -14,14 +14,13 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Force Generate Project Files
+      - name: Force Generate Project in Clean Folder
+        # Собираем проект в абсолютно чистой папке /tmp, где нет старого мусора с сайта
         run: |
-          # 1. Стираем старый мусор и создаем чистые папки
-          rm -rf app settings.gradle build.gradle compile.py builder.py || true
-          mkdir -p app/src/main/java/com/love/cinemaplayer
+          mkdir -p /tmp/cinema_project/app/src/main/java/com/love/cinemaplayer
 
-          # 2. Записываем на 100% правильный Манифест
-          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          # 1. Записываем правильный Манифест
+          cat << 'EOF' > /tmp/cinema_project/app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://android.com" package="com.love.cinemaplayer">
               <uses-permission android:name="android.permission.INTERNET" />
@@ -36,8 +35,8 @@ jobs:
           </manifest>
           EOF
 
-          # 3. Записываем чистый Java код плеера
-          cat << 'EOF' > app/src/main/java/com/love/cinemaplayer/MainActivity.java
+          # 2. Записываем Java код плеера
+          cat << 'EOF' > /tmp/cinema_project/app/src/main/java/com/love/cinemaplayer/MainActivity.java
           package com.love.cinemaplayer;
           import android.app.Activity;
           import android.net.Uri;
@@ -112,10 +111,10 @@ jobs:
           }
           EOF
 
-          # 4. Записываем конфигурацию Gradle проекта
-          echo "include ':app'" > settings.gradle
+          # 3. Записываем конфигурацию Gradle проекта
+          echo "include ':app'" > /tmp/cinema_project/settings.gradle
 
-          cat << 'EOF' > build.gradle
+          cat << 'EOF' > /tmp/cinema_project/build.gradle
           buildscript {
               repositories { google(); mavenCentral() }
               dependencies { classpath 'com.android.tools.build:gradle:8.2.2' }
@@ -125,7 +124,7 @@ jobs:
           }
           EOF
 
-          cat << 'EOF' > app/build.gradle
+          cat << 'EOF' > /tmp/cinema_project/app/build.gradle
           plugins { id 'com.android.application' }
           android {
               namespace 'com.love.cinemaplayer'
@@ -142,16 +141,22 @@ jobs:
           EOF
 
       - name: Setup Gradle Wrapper Automatically
-        run: gradle wrapper --gradle-version 8.5
+        run: |
+          cd /tmp/cinema_project
+          gradle wrapper --gradle-version 8.5
 
       - name: Setup Gradle Automation
         uses: gradle/actions/setup-gradle@v3
+        with:
+          build-root-directory: '/tmp/cinema_project'
 
       - name: Build APK with Gradle
-        run: ./gradlew assembleDebug --no-daemon
+        run: |
+          cd /tmp/cinema_project
+          ./gradlew assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: cinema-player-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: /tmp/cinema_project/app/build/outputs/apk/debug/*.apk
