@@ -14,121 +14,144 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Force Generate Perfect Project
+      - name: Force Generate Project Files
         run: |
-          # Исправлено: Полностью стираем старую папку app, чтобы избавиться от кривого манифеста
+          # Полностью очищаем весь старый мусор в репозитории
           rm -rf app settings.gradle build.gradle compile.py builder.py || true
-          
           mkdir -p app/src/main/java/com/love/cinemaplayer
-          
-          echo '<?xml version="1.0" encoding="utf-8"?>' > app/src/main/AndroidManifest.xml
-          echo '<manifest xmlns:android="http://android.com" package="com.love.cinemaplayer">' >> app/src/main/AndroidManifest.xml
-          echo '    <uses-permission android:name="android.permission.INTERNET" />' >> app/src/main/AndroidManifest.xml
-          echo '    <application android:allowBackup="true" android:label="Cinema Player" android:theme="@android:style/Theme.NoTitleBar.Fullscreen">' >> app/src/main/AndroidManifest.xml
-          echo '        <activity android:name="com.love.cinemaplayer.MainActivity" android:exported="true" android:screenOrientation="landscape">' >> app/src/main/AndroidManifest.xml
-          echo '            <intent-filter>' >> app/src/main/AndroidManifest.xml
-          echo '                <action android:name="android.intent.action.MAIN" />' >> app/src/main/AndroidManifest.xml
-          echo '                <category android:name="android.intent.category.LAUNCHER" />' >> app/src/main/AndroidManifest.xml
-          echo '            </intent-filter>' >> app/src/main/AndroidManifest.xml
-          echo '        </activity>' >> app/src/main/application>' >> app/src/main/AndroidManifest.xml
-          echo '</manifest>' >> app/src/main/AndroidManifest.xml
 
-          cat << 'EOF' > app/src/main/java/com/love/cinemaplayer/MainActivity.java
-          package com.love.cinemaplayer;
-          import android.app.Activity;
-          import android.net.Uri;
-          import android.os.Bundle;
-          import android.view.View;
-          import android.widget.TextView;
-          import android.widget.VideoView;
-          import org.eclipse.paho.client.mqttv3.*;
-          import org.json.JSONObject;
+      - name: Write Android Manifest
+        uses: 1arp/create-file@v1.1.4
+        with:
+          path: 'app/src/main/AndroidManifest.xml'
+          content: |
+            <?xml version="1.0" encoding="utf-8"?>
+            <manifest xmlns:android="http://android.com" package="com.love.cinemaplayer">
+                <uses-permission android:name="android.permission.INTERNET" />
+                <application android:allowBackup="true" android:label="Cinema Player" android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+                    <activity android:name="com.love.cinemaplayer.MainActivity" android:exported="true" android:screenOrientation="landscape">
+                        <intent-filter>
+                            <action android:name="android.intent.action.MAIN" />
+                            <category android:name="android.intent.category.LAUNCHER" />
+                        </intent-filter>
+                    </activity>
+                </application>
+            </manifest>
 
-          public class MainActivity extends Activity {
-              private VideoView videoPlayer;
-              private TextView infoLabel;
-              private MqttAsyncClient client;
+      - name: Write MainActivity Java
+        uses: 1arp/create-file@v1.1.4
+        with:
+          path: 'app/src/main/java/com/love/cinemaplayer/MainActivity.java'
+          content: |
+            package com.love.cinemaplayer;
+            import android.app.Activity;
+            import android.net.Uri;
+            import android.os.Bundle;
+            import android.view.View;
+            import android.widget.TextView;
+            import android.widget.VideoView;
+            import org.eclipse.paho.client.mqttv3.*;
+            import org.json.JSONObject;
 
-              @Override
-              protected void onCreate(Bundle savedInstanceState) {
-                  super.onCreate(savedInstanceState);
-                  videoPlayer = new VideoView(this);
-                  infoLabel = new TextView(this);
-                  infoLabel.setText("🎬 WAITING FOR HOST SIGNAL...");
-                  infoLabel.setTextSize(20);
-                  infoLabel.setTextColor(0xFF89B4FA);
-                  
-                  android.widget.RelativeLayout layout = new android.widget.RelativeLayout(this);
-                  layout.setBackgroundColor(0xFF11111B);
-                  
-                  android.widget.RelativeLayout.LayoutParams params = new android.widget.RelativeLayout.LayoutParams(
-                      android.widget.RelativeLayout.LayoutParams.WRAP_CONTENT, android.widget.RelativeLayout.LayoutParams.WRAP_CONTENT);
-                  params.addRule(android.widget.RelativeLayout.CENTER_IN_PARENT);
-                  layout.addView(infoLabel, params);
-                  layout.addView(videoPlayer, new android.widget.RelativeLayout.LayoutParams(
-                      android.widget.RelativeLayout.LayoutParams.MATCH_PARENT, android.widget.RelativeLayout.LayoutParams.MATCH_PARENT));
-                  videoPlayer.setVisibility(View.GONE);
-                  setContentView(layout);
-                  startMqtt();
-              }
+            public class MainActivity extends Activity {
+                private VideoView videoPlayer;
+                private TextView infoLabel;
+                private MqttAsyncClient client;
 
-              private void startMqtt() {
-                  try {
-                      String clientId = MqttClient.generateClientId();
-                      client = new MqttAsyncClient("tcp://broker.emqx.io:1883", clientId, null);
-                      MqttConnectOptions options = new MqttConnectOptions();
-                      options.setAutomaticReconnect(true);
-                      options.setCleanSession(true);
-                      client.connect(options, null, new IMqttActionListener() {
-                          @Override public void onSuccess(IMqttToken token) { try { client.subscribe("my_cinema/love_cinema_room_secret_999/control", 1); } catch (Exception e) {} }
-                          @Override public void onFailure(IMqttToken asyncActionToken, Throwable exception) {}
-                      });
-                      client.setCallback(new MqttCallbackExtended() {
-                          @Override public void connectComplete(boolean reconnect, String serverURI) {}
-                          @Override public void connectionLost(Throwable cause) {}
-                          @Override public void deliveryComplete(IMqttDeliveryToken token) {}
-                          @Override
-                          public void messageArrived(String topic, MqttMessage message) throws Exception {
-                              JSONObject data = new JSONObject(new String(message.getPayload()));
-                              final String action = data.getString("action");
-                              final String url = data.optString("url", "");
-                              runOnUiThread(() -> {
-                                  if (action.equals("load") && !url.isEmpty()) {
-                                      infoLabel.setVisibility(View.GONE);
-                                      videoPlayer.setVisibility(View.VISIBLE);
-                                      videoPlayer.setVideoURI(Uri.parse(url));
-                                      videoPlayer.start();
-                                  } else if (action.equals("play")) { videoPlayer.start(); }
-                                  else if (action.equals("pause")) { videoPlayer.pause(); }
-                              });
-                          }
-                      });
-                  } catch (Exception e) {}
-              }
-          }
-          EOF
+                @Override
+                protected void onCreate(Bundle savedInstanceState) {
+                    super.onCreate(savedInstanceState);
+                    videoPlayer = new VideoView(this);
+                    infoLabel = new TextView(this);
+                    infoLabel.setText("🎬 WAITING FOR HOST SIGNAL...");
+                    infoLabel.setTextSize(20);
+                    infoLabel.setTextColor(0xFF89B4FA);
+                    
+                    android.widget.RelativeLayout layout = new android.widget.RelativeLayout(this);
+                    layout.setBackgroundColor(0xFF11111B);
+                    
+                    android.widget.RelativeLayout.LayoutParams params = new android.widget.RelativeLayout.LayoutParams(
+                        android.widget.RelativeLayout.LayoutParams.WRAP_CONTENT, android.widget.RelativeLayout.LayoutParams.WRAP_CONTENT);
+                    params.addRule(android.widget.RelativeLayout.CENTER_IN_PARENT);
+                    layout.addView(infoLabel, params);
+                    layout.addView(videoPlayer, new android.widget.RelativeLayout.LayoutParams(
+                        android.widget.RelativeLayout.LayoutParams.MATCH_PARENT, android.widget.RelativeLayout.LayoutParams.MATCH_PARENT));
+                    videoPlayer.setVisibility(View.GONE);
+                    setContentView(layout);
+                    startMqtt();
+                }
 
-          echo "include ':app'" > settings.gradle
-          
-          echo "buildscript {" > build.gradle
-          echo "    repositories { google(); mavenCentral() }" >> build.gradle
-          echo "    dependencies { classpath 'com.android.tools.build:gradle:8.2.2' }" >> build.gradle
-          echo "}" >> build.gradle
-          echo "allprojects { repositories { google(); mavenCentral() } }" >> build.gradle
+                private void startMqtt() {
+                    try {
+                        String clientId = MqttClient.generateClientId();
+                        client = new MqttAsyncClient("tcp://broker.emqx.io:1883", clientId, null);
+                        MqttConnectOptions options = new MqttConnectOptions();
+                        options.setAutomaticReconnect(true);
+                        options.setCleanSession(true);
+                        client.connect(options, null, new IMqttActionListener() {
+                            @Override public void onSuccess(IMqttToken token) { try { client.subscribe("my_cinema/love_cinema_room_secret_999/control", 1); } catch (Exception e) {} }
+                            @Override public void onFailure(IMqttToken asyncActionToken, Throwable exception) {}
+                        });
+                        client.setCallback(new MqttCallbackExtended() {
+                            @Override public void connectComplete(boolean reconnect, String serverURI) {}
+                            @Override public void connectionLost(Throwable cause) {}
+                            @Override public void deliveryComplete(IMqttDeliveryToken token) {}
+                            @Override
+                            public void messageArrived(String topic, MqttMessage message) throws Exception {
+                                JSONObject data = new JSONObject(new String(message.getPayload()));
+                                final String action = data.getString("action");
+                                final String url = data.optString("url", "");
+                                runOnUiThread(() -> {
+                                    if (action.equals("load") && !url.isEmpty()) {
+                                        infoLabel.setVisibility(View.GONE);
+                                        videoPlayer.setVisibility(View.VISIBLE);
+                                        videoPlayer.setVideoURI(Uri.parse(url));
+                                        videoPlayer.start();
+                                    } else if (action.equals("play")) { videoPlayer.start(); }
+                                    else if (action.equals("pause")) { videoPlayer.pause(); }
+                                });
+                            }
+                        });
+                    } catch (Exception e) {}
+                }
+            }
 
-          echo "plugins { id 'com.android.application' }" > app/build.gradle
-          echo "android {" >> app/build.gradle
-          echo "    namespace 'com.love.cinemaplayer'" >> app/build.gradle
-          echo "    compileSdk 34" >> app/build.gradle
-          echo "    defaultConfig {" >> app/build.gradle
-          echo "        applicationId 'com.love.cinemaplayer'" >> app/build.gradle
-          echo "        minSdk 21" >> app/build.gradle
-          echo "        targetSdk 34" >> app/build.gradle
-          echo "        versionCode 1" >> app/build.gradle
-          echo "        versionName '1.0'" >> app/build.gradle
-          echo "    }" >> app/build.gradle
-          echo "}" >> app/build.gradle
-          echo "dependencies { implementation 'org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5' }" >> app/build.gradle
+      - name: Write Settings Gradle
+        uses: 1arp/create-file@v1.1.4
+        with:
+          path: 'settings.gradle'
+          content: |
+            include ':app'
+
+      - name: Write Root Build Gradle
+        uses: 1arp/create-file@v1.1.4
+        with:
+          path: 'build.gradle'
+          content: |
+            buildscript {
+                repositories { google(); mavenCentral() }
+                dependencies { classpath 'com.android.tools.build:gradle:8.2.2' }
+            }
+            allprojects { repositories { google(); mavenCentral() } }
+
+      - name: Write App Build Gradle
+        uses: 1arp/create-file@v1.1.4
+        with:
+          path: 'app/build.gradle'
+          content: |
+            plugins { id 'com.android.application' }
+            android {
+                namespace 'com.love.cinemaplayer'
+                compileSdk 34
+                defaultConfig {
+                    applicationId "com.love.cinemaplayer"
+                    minSdk 21
+                    targetSdk 34
+                    versionCode 1
+                    versionName "1.0"
+                }
+            }
+            dependencies { implementation 'org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5' }
 
       - name: Setup Gradle Wrapper Automatically
         run: gradle wrapper --gradle-version 8.5
